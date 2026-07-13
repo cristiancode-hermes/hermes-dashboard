@@ -247,6 +247,46 @@ function buildMedium(data) {
     platRow.addSpacer(8);
   }
 
+  w.addSpacer(2);
+
+  // ── Pipeline status ──
+  const pi = (data.cron_files || {}).jobs || [];
+  if (pi.length > 0) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todaySec = today.getTime() / 1000;
+    const pipeJobs = [
+      { lbl: "🎨Specs", job: pi.find(j => j.name === "design-specs-builder") },
+      { lbl: "🏗️Build", job: pi.find(j => j.name === "hermes-daily-builder") },
+      { lbl: "🧪Deploy", job: pi.find(j => j.name === "qa-tester-deployer") },
+      { lbl: "⚙️C++", job: pi.find(j => j.name === "cpp-daily-project") },
+    ].filter(k => k.job);
+    if (pipeJobs.length > 0) {
+      const pipeRow = w.addStack();
+      pipeRow.layoutHorizontally();
+      pipeRow.addSpacer(4);
+      pipeJobs.forEach(({ lbl, job }) => {
+        const lr = job.last_run_at ? new Date(job.last_run_at).getTime() / 1000 : null;
+        const done = lr && lr >= todaySec;
+        const chip = pipeRow.addStack();
+        chip.layoutVertically();
+        chip.centerAlignContent();
+        chip.backgroundColor = done ? new Color("#22c55e20") : BG_SURFACE2;
+        chip.cornerRadius = 4;
+        chip.setPadding(3, 6, 3, 6);
+        const c = chip.addText(done ? "✅" : "⏳");
+        c.font = Font.regularSystemFont(8);
+        c.centerAlignText();
+        const l = chip.addText(lbl);
+        l.font = Font.mediumSystemFont(7);
+        l.textColor = done ? GREEN : TEXT_MUTED;
+        l.centerAlignText();
+        pipeRow.addSpacer(4);
+      });
+      pipeRow.addSpacer(4);
+    }
+  }
+
   w.addSpacer(null);
 
   const dt = data.datetime ? new Date(data.datetime) : new Date();
@@ -293,6 +333,7 @@ function buildLarge(data) {
   const allUp = socats.all_up !== false;
   const sys = data.system || {};
   const cronFiles = data.cron_files || {};
+  const cronJobs = cronFiles.jobs || [];
 
   const metrics = [
     ["Sessions", sessions.length, ACCENT],
@@ -300,7 +341,7 @@ function buildLarge(data) {
     ["Procs", procs.length, TEXT],
     ["Workers", workers.length, TEXT_DIM],
     ["Socats", allUp ? "OK" : "DOWN", allUp ? GREEN : RED],
-    ["Cron", Object.keys(cronFiles).length, YELLOW],
+    ["Crons", cronJobs.length, YELLOW],
   ];
 
   metrics.forEach(([lbl, val, color], i) => {
@@ -362,7 +403,7 @@ function buildLarge(data) {
     const sessTitle = w.addText("Recent Sessions");
     sessTitle.font = Font.boldSystemFont(10);
     sessTitle.textColor = TEXT_MUTED;
-    sessTitle.addSpacer(2);
+    w.addSpacer(2);
 
     sessions.slice(0, 4).forEach((s, i) => {
       const row = w.addStack();
@@ -415,6 +456,60 @@ function buildLarge(data) {
 
   w.addSpacer(null);
 
+  // ── Today's Cron Jobs ──
+  const jobs = (data.cron_files || {}).jobs || [];
+  if (jobs.length > 0) {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayTs = todayStart.getTime() / 1000;
+
+    const keyCrons = [
+      { name: "🎨 Design Specs", job: jobs.find(j => j.name === "design-specs-builder") },
+      { name: "🏗️ Daily Builder", job: jobs.find(j => j.name === "hermes-daily-builder") },
+      { name: "🧪 QA + Deploy", job: jobs.find(j => j.name === "qa-tester-deployer") },
+      { name: "⚙️ C++ Daily", job: jobs.find(j => j.name === "cpp-daily-project") },
+      { name: "🤖 ML Daily", job: jobs.find(j => j.name === "ml-daily-project") },
+      { name: "📱 Scriptable", job: jobs.find(j => j.name === "scriptable-daily-creator") },
+    ].filter(k => k.job);
+
+    if (keyCrons.length > 0) {
+      w.addSpacer(6);
+      addDivider(w);
+      w.addSpacer(6);
+
+      const cronTitle = w.addText("Today's Pipeline");
+      cronTitle.font = Font.boldSystemFont(10);
+      cronTitle.textColor = TEXT_MUTED;
+      w.addSpacer(4);
+
+      keyCrons.forEach(({ name, job }) => {
+        const lastRun = job.last_run_at ? new Date(job.last_run_at).getTime() / 1000 : null;
+        const done = lastRun && lastRun >= todayTs;
+        const row = w.addStack();
+        row.layoutHorizontally();
+        row.addSpacer(6);
+        const icon = row.addText(done ? "✅" : "⏳");
+        icon.font = Font.regularSystemFont(9);
+        row.addSpacer(4);
+        const lbl = row.addText(name);
+        lbl.font = Font.mediumSystemFont(9);
+        lbl.textColor = done ? GREEN : TEXT_DIM;
+        row.addSpacer(null);
+        if (lastRun) {
+          const t = row.addText(formatTime(new Date(lastRun * 1000)));
+          t.font = Font.regularSystemFont(8);
+          t.textColor = done ? GREEN : TEXT_MUTED;
+        } else {
+          const t = row.addText("—");
+          t.font = Font.regularSystemFont(8);
+          t.textColor = TEXT_MUTED;
+        }
+        row.addSpacer(6);
+        w.addSpacer(1);
+      });
+    }
+  }
+
   const dt = data.datetime ? new Date(data.datetime) : new Date();
   const ts = w.addText(formatTime(dt));
   ts.font = Font.regularSystemFont(8);
@@ -430,57 +525,48 @@ function formatTime(d) {
 }
 
 // ── Main ──
-const widget = new ListWidget();
-widget.backgroundColor = BG_DARK;
 
-// Show loading
-const loadTxt = widget.addText("Loading...");
-loadTxt.font = Font.mediumSystemFont(12);
-loadTxt.textColor = TEXT_DIM;
-loadTxt.centerAlignText();
-
-try {
-  const data = await fetchData();
-  const size = config.widgetFamily || "medium";
-  let result;
-  if (size === "small") {
-    result = buildSmall(data);
-  } else if (size === "medium") {
-    result = buildMedium(data);
-  } else {
-    result = buildLarge(data);
-  }
-
-  // Copy result to widget
-  widget.setPadding(0, 0, 0, 0);
-  const bgUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPj/HwADBwIAMCbHYQAAAABJRU5ErkJggg==";
-  widget.backgroundImage = await (new Request(bgUrl)).loadImage();
-  widget.addStack().addWidget(result);
-
-} catch (e) {
-  widget.setPadding(12, 12, 12, 12);
-  const errTitle = widget.addText("⚠️ Error");
-  errTitle.font = Font.boldSystemFont(13);
-  errTitle.textColor = RED;
-  errTitle.centerAlignText();
-  widget.addSpacer(4);
-  const errMsg = widget.addText(e.message || "Connection failed");
-  errMsg.font = Font.mediumSystemFont(10);
-  errMsg.textColor = TEXT_DIM;
-  errMsg.centerAlignText();
-  widget.addSpacer(4);
-  const retry = widget.addText("Tap to retry");
-  retry.font = Font.regularSystemFont(9);
-  retry.textColor = TEXT_MUTED;
-  retry.centerAlignText();
-
-  if (config.runsInWidget) {
-    const refresh = widget.addText("Refreshes every 5 min");
-    refresh.font = Font.regularSystemFont(8);
-    refresh.textColor = TEXT_MUTED;
-    refresh.centerAlignText();
+async function buildWidget() {
+  try {
+    const data = await fetchData();
+    const size = config.widgetFamily || "medium";
+    if (size === "small") {
+      return buildSmall(data);
+    } else if (size === "medium") {
+      return buildMedium(data);
+    } else {
+      return buildLarge(data);
+    }
+  } catch (e) {
+    const w = new ListWidget();
+    w.backgroundColor = BG_DARK;
+    w.setPadding(12, 12, 12, 12);
+    const errTitle = w.addText("⚠️ Error");
+    errTitle.font = Font.boldSystemFont(13);
+    errTitle.textColor = RED;
+    errTitle.centerAlignText();
+    w.addSpacer(4);
+    const errMsg = w.addText(e.message || "Connection failed");
+    errMsg.font = Font.mediumSystemFont(10);
+    errMsg.textColor = TEXT_DIM;
+    errMsg.centerAlignText();
+    w.addSpacer(4);
+    const retry = w.addText("Tap to retry");
+    retry.font = Font.regularSystemFont(9);
+    retry.textColor = TEXT_MUTED;
+    retry.centerAlignText();
+    if (config.runsInWidget) {
+      w.addSpacer(4);
+      const refresh = w.addText("Refreshes every 5 min");
+      refresh.font = Font.regularSystemFont(8);
+      refresh.textColor = TEXT_MUTED;
+      refresh.centerAlignText();
+    }
+    return w;
   }
 }
+
+const widget = await buildWidget();
 
 // Refresh interval
 if (config.runsInWidget) {

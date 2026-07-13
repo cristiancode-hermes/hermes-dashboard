@@ -71,10 +71,24 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);padding:clam
 .session-title{font-weight:500;font-size:clamp(12px,1.3vw,13px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .session-meta{display:flex;gap:6px;font-size:9px;color:var(--text-muted);margin-top:2px;flex-wrap:wrap;row-gap:2px}
 .session-meta span{flex-shrink:0}
-/* ── Cron ── */
-.cron-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:4px}
-.cron-file{padding:4px 6px;background:var(--surface2);border-radius:5px;font-size:10px;color:var(--text-dim);overflow:hidden}
-.cron-file div{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* ── Cron Jobs ── */
+.cron-tabs{display:flex;gap:6px;margin-bottom:10px}
+.cron-tab{padding:4px 12px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text-muted);font-size:11px;cursor:pointer;transition:all .2s;font-family:var(--font)}
+.cron-tab:hover{background:var(--surface);color:var(--text-dim)}
+.cron-tab.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
+.cron-jobs{display:flex;flex-direction:column;gap:4px}
+.cron-job{display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--surface2);border-radius:6px;border:1px solid transparent;transition:all .2s}
+.cron-job:hover{border-color:var(--border-hover)}
+.cron-job .icon{font-size:14px;width:18px;text-align:center;flex-shrink:0}
+.cron-job .name{font-size:11px;color:var(--text);font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cron-job .time{font-size:10px;color:var(--text-muted);font-family:var(--mono);white-space:nowrap}
+.cron-job .status{font-size:10px;color:var(--text-muted);white-space:nowrap}
+.cron-job .status.ok{color:var(--green)}
+.cron-job .status.err{color:var(--red)}
+.cron-job .last-run{font-size:9px;color:var(--text-muted);white-space:nowrap}
+.cron-section-title{font-size:12px;font-weight:600;color:var(--text-dim);margin:8px 0 6px;display:flex;align-items:center;gap:6px}
+.cron-section-title .count{font-size:10px;color:var(--text-muted);font-weight:400}
+.cron-empty{padding:12px;text-align:center;font-size:11px;color:var(--text-muted)}
 /* ── System ── */
 .sys-row{display:flex;gap:clamp(6px,2vw,16px);flex-wrap:wrap}
 .sys-stat{padding:5px 8px;background:var(--surface2);border-radius:5px;min-width:60px;flex:1}
@@ -214,6 +228,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);padding:clam
   <div class="summary-item" data-scroll="taskSection"><div class="s-label">Tasks</div><div class="s-value" id="sTasks">0</div><div class="s-sub">active</div></div>
   <div class="summary-item" data-scroll="agentSection"><div class="s-label">Agents</div><div class="s-value" id="sAgents">0</div><div class="s-sub" id="sAgentsSub">roots</div></div>
   <div class="summary-item" data-scroll="socatSection"><div class="s-label">Socats</div><div class="s-value" id="sSocats">—</div><div class="s-sub" id="sSocatsSub">checking</div></div>
+  <div class="summary-item" data-scroll="cronSection"><div class="s-label">Crons</div><div class="s-value" id="sCrons">0</div><div class="s-sub">jobs</div></div>
   <div class="summary-item" data-scroll="systemSection"><div class="s-label">System</div><div class="s-value" id="sLoad">—</div><div class="s-sub">load 1m</div></div>
   <div class="summary-item"><div class="s-label">Uptime</div><div class="s-value" id="sUptime">—</div><div class="s-sub">server</div></div>
 </div>
@@ -288,14 +303,27 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);padding:clam
     <div class="card-content"><div id="socatList"><div class="empty">Checking...</div></div></div>
   </div>
 
-  <!-- Cron -->
-  <div class="card" id="cronSection">
+  <!-- Cron Jobs -->
+  <div class="card full" id="cronSection">
     <div class="card-title">
-      <span>⏰ Cron</span>
+      <span>⏰ Cron Jobs</span>
       <span class="count" id="cronCount">0</span>
       <button class="card-toggle" onclick="toggleCard(this)" title="Toggle section">−</button>
     </div>
-    <div class="card-content"><div class="cron-grid" id="cronList"><div class="empty">No cron data</div></div></div>
+    <div class="card-content">
+      <div class="cron-tabs">
+        <button class="cron-tab active" onclick="switchCronTab('daily',this)">📆 Daily</button>
+        <button class="cron-tab" onclick="switchCronTab('weekly',this)">📅 Weekly</button>
+      </div>
+      <div id="cronDailySection">
+        <div class="cron-section-title">Daily <span class="count" id="cronDailyCount">0</span></div>
+        <div class="cron-jobs" id="cronDailyList"></div>
+      </div>
+      <div id="cronWeeklySection" style="display:none">
+        <div class="cron-section-title">Weekly <span class="count" id="cronWeeklyCount">0</span></div>
+        <div class="cron-jobs" id="cronWeeklyList"></div>
+      </div>
+    </div>
   </div>
 
   <!-- Workers -->
@@ -335,6 +363,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);padding:clam
 <div class="bottom-nav" id="bottomNav">
   <button onclick="scrollToSection('gatewaySection')"><span class="nav-icon">🖧</span>Gateway</button>
   <button onclick="scrollToSection('agentSection')"><span class="nav-icon">🤖</span>Agents</button>
+  <button onclick="scrollToSection('cronSection')"><span class="nav-icon">⏰</span>Crons</button>
   <button onclick="scrollToSection('taskSection')"><span class="nav-icon">📋</span>Tasks</button>
   <button onclick="scrollToSection('socatSection')"><span class="nav-icon">🔌</span>Socat</button>
   <button onclick="scrollToSection('eventSection')"><span class="nav-icon">📋</span>Events</button>
@@ -396,6 +425,13 @@ function toggleCard(btn) {
 function scrollToSection(id) {
   const el = document.getElementById(id);
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+// ── Cron tab switch ──
+function switchCronTab(tab, btn) {
+  document.querySelectorAll('.cron-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('cronDailySection').style.display = tab === 'daily' ? '' : 'none';
+  document.getElementById('cronWeeklySection').style.display = tab === 'weekly' ? '' : 'none';
 }
 // Summary items scrolling
 document.querySelectorAll('.summary-item[data-scroll]').forEach(el => {
@@ -658,18 +694,137 @@ function render(data) {
       }).join('')
     : '<div class="empty">No events yet</div>';
 
-  // ── Cron ──
-  const cronFiles = data.cron_files || {};
-  const crones = Object.values(cronFiles);
-  document.getElementById('cronCount').textContent = crones.length;
-  document.getElementById('cronList').innerHTML = crones.length
-    ? crones.map(c => `
-      <div class="cron-file">
-        <div style="font-weight:500;margin-bottom:2px">${esc(c.file?.replace('.json','').replace('_state','') || '?').slice(0,18)}</div>
-        <div style="font-size:9px;color:var(--text-muted)">${fmtTime(c.mtime)}</div>
-        <div style="font-size:9px;color:var(--text-muted)">${(c.size/1024).toFixed(1)} KB</div>
-      </div>`).join('')
-    : '<div class="empty">No cron data</div>';
+  // ── Cron Jobs ──
+  const cronData = data.cron_files || {};
+  const jobs = cronData.jobs || [];
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000;
+  // Monday of current week at 00:00
+  const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon...
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset).getTime() / 1000;
+
+  function parseCronExpr(expr) {
+    if (!expr || typeof expr !== 'string') return null;
+    const parts = expr.trim().split(/\s+/);
+    if (parts.length < 5) return null;
+    return { minute: parts[0], hour: parts[1], dom: parts[2], month: parts[3], dow: parts[4] };
+  }
+  function fmtCronTime(expr) {
+    const c = parseCronExpr(expr);
+    if (!c) return expr;
+    const h = c.hour, m = c.minute;
+    if (h === '*') return `every hour at :${m}`;
+    if (m === '*') return `${h.padStart(2,'0')}:*`;
+    if (h.includes(',')) {
+      const hrs = h.split(',').map(x => `${x.padStart(2,'0')}:${m.padStart(2,'0')}`);
+      return hrs.join(', ');
+    }
+    return `${h.padStart(2,'0')}:${m.padStart(2,'0')}`;
+  }
+  function isDailyJob(schedule) {
+    if (!schedule) return false;
+    const expr = schedule.expr || schedule.display || '';
+    const c = parseCronExpr(expr);
+    if (!c) return schedule.kind === 'interval';
+    // Daily = no day-of-week restriction OR * for dow AND * for dom
+    if (c.dow === '*') return true;
+    return false;
+  }
+  function isWeeklyJob(schedule) {
+    if (!schedule) return false;
+    const expr = schedule.expr || schedule.display || '';
+    const c = parseCronExpr(expr);
+    if (!c) return false;
+    if (c.dow === '*' || c.dow === '?') return false;
+    return true;
+  }
+  function fmtDow(dow) {
+    const days = { 0:'Sun',1:'Mon',2:'Tue',3:'Wed',4:'Thu',5:'Fri',6:'Sat',7:'Sun' };
+    if (dow === '*') return '';
+    if (dow.includes(',')) return dow.split(',').map(d => days[d]||d).join(',');
+    if (dow.includes('-')) {
+      const [s,e] = dow.split('-').map(Number);
+      return days[s] + '-' + days[e];
+    }
+    return days[dow] || dow;
+  }
+
+  document.getElementById('sCrons').textContent = jobs.length;
+
+  const dailyJobs = jobs.filter(j => isDailyJob(j.schedule));
+  const weeklyJobs = jobs.filter(j => isWeeklyJob(j.schedule));
+
+  document.getElementById('cronDailyCount').textContent = dailyJobs.length;
+  document.getElementById('cronWeeklyCount').textContent = weeklyJobs.length;
+
+  function renderCronJob(job) {
+    const schedule = job.schedule || {};
+    const expr = schedule.expr || schedule.display || '';
+    const timeStr = fmtCronTime(expr);
+    const lastRun = job.last_run_at ? new Date(job.last_run_at).getTime() / 1000 : null;
+    const lastRunTs = job.output_mtime || lastRun;
+    const isRunning = job.state === 'running' || (lastRunTs && (now.getTime()/1000 - lastRunTs) < 120);
+    const isWeekly = isWeeklyJob(job.schedule);
+    const isToday = lastRunTs && lastRunTs >= todayStart;
+    const isThisWeek = lastRunTs && lastRunTs >= weekStart;
+    
+    let icon = '⏳'; // clock = pending
+    let statusClass = '';
+    let statusText = '';
+    let lastRunText = '';
+
+    if (isRunning) {
+      icon = '🔄';
+      statusText = 'running';
+      statusClass = 'ok';
+    } else if (isWeekly) {
+      if (isThisWeek) {
+        icon = '✅';
+        statusText = 'this week';
+        statusClass = 'ok';
+      } else {
+        icon = '⏳';
+        statusText = 'pending';
+      }
+    } else {
+      if (isToday) {
+        icon = '✅';
+        statusText = 'today';
+        statusClass = 'ok';
+      } else {
+        icon = '⏳';
+        statusText = 'pending';
+      }
+    }
+
+    if (lastRunTs) {
+      lastRunText = fmtTime(lastRunTs);
+    } else {
+      lastRunText = 'never';
+    }
+
+    const statusBadge = job.last_status === 'error' ? 'err' : (job.last_status === 'ok' ? 'ok' : '');
+
+    // For weekly jobs, also show day of week
+    const extra = isWeekly && expr ? fmtDow(parseCronExpr(expr)?.dow) : '';
+
+    return `<div class="cron-job">
+      <span class="icon">${icon}</span>
+      <span class="name" title="${esc(job.name || job.id || '?')}">${esc((job.name || job.id || '?').slice(0, 24))}</span>
+      <span class="time">${esc(timeStr)}${extra ? ' ' + extra : ''}</span>
+      <span class="last-run">${lastRunText}</span>
+      <span class="status ${statusBadge}">${esc(statusText)}</span>
+    </div>`;
+  }
+
+  document.getElementById('cronDailyList').innerHTML = dailyJobs.length
+    ? dailyJobs.map(renderCronJob).join('')
+    : '<div class="cron-empty">No daily cron jobs</div>';
+
+  document.getElementById('cronWeeklyList').innerHTML = weeklyJobs.length
+    ? weeklyJobs.map(renderCronJob).join('')
+    : '<div class="cron-empty">No weekly cron jobs</div>';
 
   // ── Summary KPIs ──
   document.getElementById('sGateway').textContent = gw.state === 'running' ? '●' : '?';

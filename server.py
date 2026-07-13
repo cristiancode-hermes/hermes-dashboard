@@ -156,6 +156,67 @@ def get_gateway_status():
     return data
 
 
+def get_all_gateways():
+    """Report status for all Hermes profile gateways."""
+    profile_gateways = {}
+
+    # Default profile gateway
+    gw_path = f"{HERMES_HOME}/gateway_state.json"
+    if os.path.isfile(gw_path):
+        gw = read_json(gw_path) or {}
+        if gw.get("gateway_state") == "running":
+            profile_gateways["default"] = {
+                "state": "running",
+                "pid": gw.get("pid"),
+                "platforms": gw.get("platforms", {}),
+                "start_time": gw.get("start_time"),
+            }
+        else:
+            profile_gateways["default"] = {"state": "unknown"}
+
+    # Profile-specific gateways — check via process list
+    profile_names = [
+        "tester-stack", "ux-ui-designer", "petbook-frontend", "job-hunter",
+        "cpp-developer", "ml-learner", "scriptable-dev", "unreal-mentor", "vanlife-optimizer",
+    ]
+    for name in profile_names:
+        pid = _find_profile_gateway_pid(name)
+        profile_gateways[name] = {
+            "state": "running" if pid else "down",
+            "pid": pid,
+        }
+
+    # Also read watchdog status if available
+    watchdog = read_json(f"{HERMES_HOME}/.hermes/gateway-watchdog-status.json") or {}
+    return {"profiles": profile_gateways, "watchdog": watchdog.get("watchdog", False)}
+
+
+def _find_profile_gateway_pid(profile: str) -> int | None:
+    """Find PID of a profile gateway by scanning /proc."""
+    import re
+    markers = [
+        f"hermes gateway run -p {profile}",
+        f"hermes -p {profile} gateway run",
+        f"hermes gateway run --replace --accept-hooks -p {profile}",
+    ]
+    try:
+        for pid_dir in os.listdir("/proc"):
+            if not pid_dir.isdigit():
+                continue
+            try:
+                with open(f"/proc/{pid_dir}/cmdline", "rb") as f:
+                    raw = f.read()
+                cmdline = raw.replace(b"\x00", b" ").decode("utf-8", errors="replace")
+                for m in markers:
+                    if m in cmdline:
+                        return int(pid_dir)
+            except (IOError, OSError, ValueError):
+                continue
+    except OSError:
+        pass
+    return None
+
+
 def get_processes():
     """Tracked Hermes processes (from processes.json)."""
     procs = read_json(f"{HERMES_HOME}/processes.json") or []
@@ -278,19 +339,27 @@ def get_sessions():
 
 def get_cron_jobs():
     """Cron jobs from the Hermes cron state (read from file/scheduler)."""
-    # Try reading cron output dir for last-run info
+    cron_file = f"{HERMES_HOME}/cron/jobs.json"
+    cron_data = {"jobs": [], "updated_at": None}
+    if os.path.isfile(cron_file):
+        try:
+            with open(cron_file) as f:
+                cron_data = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            pass
+    
+    # Add output file timestamps to each job
     cron_out = f"{HERMES_HOME}/.hermes/cron/output"
-    cron_files = {}
     if os.path.isdir(cron_out):
-        for fname in os.listdir(cron_out):
-            path = os.path.join(cron_out, fname)
-            mtime = os.path.getmtime(path)
-            cron_files[fname] = {
-                "file": fname,
-                "mtime": mtime,
-                "size": os.path.getsize(path),
-            }
-    return cron_files
+        for job in cron_data.get("jobs", []):
+            jid = job.get("id", "")
+            if jid:
+                out_path = os.path.join(cron_out, jid)
+                if os.path.isfile(out_path):
+                    job["output_mtime"] = os.path.getmtime(out_path)
+                    job["output_size"] = os.path.getsize(out_path)
+
+    return cron_data
 
 
 def get_agent_tree():
@@ -575,8 +644,8 @@ def get_system_stats():
 
 
 def check_socats():
-    """Check socat port forwards on the VPS host via gateway IP."""
-    gateway = "172.18.0.1"
+    """Check socat port forwards via public IP."""
+    gateway = "148.230.118.249"
     forwards = {
         "80 (HTTP)": 80,
         "443 (HTTPS)": 443,
@@ -589,7 +658,7 @@ def check_socats():
     for name, port in forwards.items():
         try:
             import socket
-            s = socket.create_connection((gateway, port), timeout=2)
+            s = socket.create_connection((gateway, port), timeout=1)
             s.close()
             results[name] = "up"
         except (OSError, Exception):
@@ -612,6 +681,8 @@ def collect_snapshot():
     agent_tree = get_agent_tree()
     new_events = detect_agent_events(agent_tree.get("roots", []))
 
+    all_gateways = get_all_gateways()
+
     snapshot = {
         "timestamp": now,
         "datetime": datetime.fromtimestamp(now, tz=timezone.utc).isoformat(),
@@ -622,6 +693,8 @@ def collect_snapshot():
             "platforms": gateway.get("platforms", {}),
             "start_time": gateway.get("start_time"),
             "uptime_seconds": now - gateway.get("start_time", now) if gateway.get("start_time") else 0,
+            "profiles": all_gateways.get("profiles", {}),
+            "watchdog": all_gateways.get("watchdog", False),
         },
         "socats": check_socats(),
         "processes": get_processes(),
